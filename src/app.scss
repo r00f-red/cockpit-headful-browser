@@ -1,0 +1,56 @@
+/*
+ * SPDX-License-Identifier: MIT
+ *
+ * Headful Browser - Custom styles
+ */
+
+// PatternFly 6 variables are already imported via the main PatternFly SCSS
+
+.headful-browser {
+  // Custom styles for the remote browser component
+
+  .vnc-container {
+    background: var(--pf-t--global--background--color--secondary--default);
+    border-radius: var(--pf-t--global--border--radius--medium);
+  }
+
+  .log-panel {
+    pre {
+      margin: 0;
+      line-height: 1.5;
+
+      // Custom scrollbar for dark theme
+      &::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      &::-webkit-scrollbar-track {
+        background: #2d2d2d;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 4px;
+      }
+
+      &::-webkit-scrollbar-thumb:hover {
+        background: #666;
+      }
+    }
+  }
+
+  .screenshot-grid {
+    .pf-v6-c-card {
+      transition: box-shadow 0.2s ease;
+
+      &:hover {
+        box-shadow: var(--pf-t--global--box-shadow--md);
+      }
+
+      img {
+        border-radius: var(--pf-t--global--border--radius--small);
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "requires": {
+    "cockpit": "264"
+  },
+  "tools": {
+    "index": {
+      "label": "Remote Browser"
+    }
+  }
+}

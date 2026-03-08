@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+*.tar.xz
+*.rpm
+*.deb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+test/images/
+bots/
+
+# Local development
+*.local
+.env
+
+# Cockpit lib (auto-downloaded)
+pkg/lib/
+test/common/

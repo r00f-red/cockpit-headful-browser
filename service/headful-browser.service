@@ -1,0 +1,127 @@
+[Unit]
+Description=Headful Browser - Chrome/Chromium with virtual display
+After=network.target
+Documentation=https://github.com/cockpit-project/headful-browser
+
+[Service]
+# Use exec type for better process tracking
+Type=exec
+User=headful-browser
+Group=headful-browser
+
+Environment="DISPLAY=:99"
+Environment="SCREEN_RES=1920x1080x24"
+Environment="CHROME_PORT=9222"
+Environment="VNC_PORT=5900"
+Environment="NOVNC_PORT=6900"
+Environment="HOME=/var/lib/headful-browser"
+Environment="XAUTHORITY=/tmp/.headful-browser-xauth"
+
+WorkingDirectory=/var/lib/headful-browser
+
+# Resource limits
+LimitNOFILE=8192
+LimitNPROC=512
+
+# Create directories
+ExecStartPre=/bin/mkdir -p /var/lib/headful-browser/.config/chrome-profile
+ExecStartPre=/bin/mkdir -p /tmp/headful-browser
+ExecStartPre=/bin/mkdir -p /run/headful-browser
+
+# Cleanup stale lock files
+ExecStartPre=-/bin/rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+
+# Kill any existing processes
+ExecStartPre=-/bin/sh -c 'pkill -9 -u headful-browser -f "Xvfb :99" 2>/dev/null || true'
+ExecStartPre=-/bin/sh -c 'pkill -9 -u headful-browser -f "x11vnc.*:5900" 2>/dev/null || true'
+ExecStartPre=-/bin/sh -c 'pkill -9 -u headful-browser -f "websockify.*:6900" 2>/dev/null || true'
+ExecStartPre=-/bin/sh -c 'pkill -9 -u headful-browser -f "fluxbox" 2>/dev/null || true'
+ExecStartPre=-/bin/sh -c 'pkill -9 -u headful-browser -f "chrome" 2>/dev/null || true'
+ExecStartPre=/bin/sleep 1
+
+# Start Xvfb and save PID
+ExecStartPre=/bin/sh -c 'Xvfb :99 -screen 0 ${SCREEN_RES} +extension RANDR -nolisten tcp > /var/log/headful-browser/xvfb.log 2>&1 & echo $! > /run/headful-browser/xvfb.pid'
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 0.5; done'
+
+# Start fluxbox
+ExecStartPre=/bin/sh -c 'DISPLAY=:99 fluxbox > /var/log/headful-browser/fluxbox.log 2>&1 & echo $! > /run/headful-browser/fluxbox.pid'
+ExecStartPre=/bin/sleep 0.5
+
+# Start x11vnc
+ExecStartPre=/bin/sh -c 'x11vnc -display :99 -nopw -listen 127.0.0.1 -xkb -forever -shared -rfbport ${VNC_PORT} > /var/log/headful-browser/x11vnc.log 2>&1 & echo $! > /run/headful-browser/x11vnc.pid'
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 20); do nc -z 127.0.0.1 ${VNC_PORT} 2>/dev/null && break; sleep 0.5; done'
+
+# Start websockify in background (we'll track Chrome as main process)
+ExecStartPre=/bin/sh -c 'websockify --web=/usr/share/novnc --cert=none ${NOVNC_PORT} 127.0.0.1:${VNC_PORT} > /var/log/headful-browser/websockify.log 2>&1 & echo $! > /run/headful-browser/websockify.pid'
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 10); do nc -z 127.0.0.1 ${NOVNC_PORT} 2>/dev/null && break; sleep 0.5; done'
+
+# Main process: Chrome (this is what systemd tracks)
+ExecStart=/usr/bin/google-chrome \
+    --remote-debugging-port=${CHROME_PORT} \
+    --user-data-dir=/var/lib/headful-browser/.config/chrome-profile \
+    --no-first-run \
+    --no-default-browser-check \
+    --start-maximized \
+    --disable-dev-shm-usage \
+    --disable-gpu \
+    --disable-software-rasterizer \
+    --disable-extensions \
+    --disable-background-networking \
+    --disable-background-timer-throttling \
+    --disable-backgrounding-occluded-windows \
+    --disable-renderer-backgrounding \
+    --disable-features=TranslateUI \
+    --enable-features=NetworkService,NetworkServiceInProcess \
+    --force-color-profile=srgb \
+    --window-position=0,0 \
+    --window-size=1920,1080 \
+    --display=:99 \
+    --app="about:blank"
+
+# When Chrome stops, clean up all helper processes
+ExecStopPost=/bin/sh -c '\
+    echo "[$(date +%Y-%m-%d\ %H:%M:%S)] Stopping Headful Browser..." >> /var/log/headful-browser/service.log; \
+    \
+    # Try graceful termination first (using PID files) \
+    for svc in websockify x11vnc fluxbox xvfb; do \
+        pidfile="/run/headful-browser/$svc.pid"; \
+        if [ -f "$pidfile" ]; then \
+            pid=$(cat "$pidfile" 2>/dev/null); \
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then \
+                kill -TERM "$pid" 2>/dev/null; \
+            fi; \
+            rm -f "$pidfile"; \
+        fi; \
+    done; \
+    \
+    sleep 2; \
+    \
+    # Force kill any remaining processes by user \
+    pkill -9 -u headful-browser -f "chrome" 2>/dev/null || true; \
+    pkill -9 -u headful-browser -f "chromium" 2>/dev/null || true; \
+    pkill -9 -u headful-browser -f "Xvfb :99" 2>/dev/null || true; \
+    pkill -9 -u headful-browser -f "x11vnc" 2>/dev/null || true; \
+    pkill -9 -u headful-browser -f "websockify" 2>/dev/null || true; \
+    pkill -9 -u headful-browser -f "fluxbox" 2>/dev/null || true; \
+    \
+    # Clean up lock files \
+    rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 /tmp/.headful-browser-xauth; \
+    \
+    echo "[$(date +%Y-%m-%d\ %H:%M:%S)] Cleanup complete" >> /var/log/headful-browser/service.log'
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60s
+StartLimitBurst=3
+
+# Timeouts
+TimeoutStartSec=60
+TimeoutStopSec=15
+
+# Ensure clean shutdown
+KillMode=process
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
